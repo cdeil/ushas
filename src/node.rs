@@ -312,12 +312,14 @@ pub struct MetalFxUpscaleNode {
     >,
     /// Depth resolve render pipeline (lazy-init, resolution-independent).
     depth_resolve: Mutex<Option<ResolvePipeline>>,
-    /// Cached bind group for depth resolve (keyed on src + dst TextureViewId).
-    depth_resolve_bind_group: Mutex<Option<(TextureViewId, TextureViewId, wgpu::BindGroup)>>,
+    /// Source identity owns cache lifetime; the binding retains its texture view.
+    depth_resolve_bind_group:
+        Mutex<Option<(bevy::render::render_resource::TextureId, wgpu::BindGroup)>>,
     /// Motion vector resolve render pipeline (lazy-init, resolution-independent).
     motion_resolve: Mutex<Option<ResolvePipeline>>,
-    /// Cached bind group for motion resolve (keyed on src TextureViewId).
-    motion_resolve_bind_group: Mutex<Option<(TextureViewId, wgpu::BindGroup)>>,
+    /// Rebuild only when the source texture is replaced, including on resize.
+    motion_resolve_bind_group:
+        Mutex<Option<(bevy::render::render_resource::TextureId, wgpu::BindGroup)>>,
     /// Cached bind group sampling the *interpolated* frame, for the extra
     /// present. Separate from `cached_bind_group`, which samples the real one.
     #[cfg(feature = "frame-interpolation")]

@@ -15,6 +15,103 @@ use bevy::render::renderer::{RenderContext, RenderDevice};
 
 use super::{MetalFxUpscaleNode, ResolvePipeline};
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::SystemState;
+    use bevy::prelude::World;
+    use bevy::render::render_resource::{Texture, TextureDescriptor, TextureViewDescriptor};
+    use bevy::render::renderer::{PendingCommandBuffers, WgpuWrapper};
+
+    #[test]
+    #[ignore = "requires a real Metal device; run explicitly on macOS"]
+    fn resolve_bindings_reuse_source_texture_and_invalidate_on_replacement() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::METAL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
+            .expect("Metal adapter required");
+        let (raw, queue) = bevy::tasks::block_on(adapter.request_device(&Default::default()))
+            .expect("Metal device required");
+        let device = RenderDevice::new(WgpuWrapper::new(raw));
+        let texture = |format| -> Texture {
+            device.create_texture(&TextureDescriptor {
+                label: Some("resolve_cache_regression"),
+                size: wgpu::Extent3d {
+                    width: 16,
+                    height: 16,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+        };
+        let mut world = World::new();
+        world.insert_resource(device.clone());
+        world.init_resource::<PendingCommandBuffers>();
+        let mut system = SystemState::<RenderContext>::new(&mut world);
+        let node = MetalFxUpscaleNode::default();
+        for motion in [false, true] {
+            let format = if motion {
+                wgpu::TextureFormat::Rg16Float
+            } else {
+                wgpu::TextureFormat::Depth32Float
+            };
+            let source = texture(format);
+            let destination = texture(format).create_view(&TextureViewDescriptor::default());
+            let resolve =
+                |source: &Texture, world: &mut World, system: &mut SystemState<RenderContext>| {
+                    let mut context = system.get_mut(world).expect("render resources");
+                    if motion {
+                        node.resolve_motion(&device, &mut context, source, &destination, 16, 16);
+                    } else {
+                        node.resolve_depth(&device, &mut context, source, &destination, 16, 16);
+                    }
+                    drop(context);
+                    system.apply(world);
+                    queue.submit(world.resource_mut::<PendingCommandBuffers>().take());
+                    if motion {
+                        node.motion_resolve_bind_group
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .1
+                            .clone()
+                    } else {
+                        node.depth_resolve_bind_group
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .1
+                            .clone()
+                    }
+                };
+            let first = resolve(&source, &mut world, &mut system);
+            for _ in 0..8 {
+                assert_eq!(
+                    first,
+                    resolve(&source, &mut world, &mut system),
+                    "stable prepass must reuse its binding"
+                );
+            }
+            let replacement = texture(format);
+            assert_ne!(
+                first,
+                resolve(&replacement, &mut world, &mut system),
+                "same-size recreated texture must invalidate the binding"
+            );
+        }
+    }
+}
+
 impl MetalFxUpscaleNode {
     /// Resolve full-res motion vectors into the content-sized RG16Float texture.
     pub(super) fn resolve_motion(
@@ -91,13 +188,13 @@ impl MetalFxUpscaleNode {
         }
         let mr_ref = mr.as_ref().unwrap();
 
-        let src_motion_view = motion_attachment_texture
-            .create_view(&bevy::render::render_resource::TextureViewDescriptor::default());
-
-        // Get or create cached bind group for motion resolve.
+        // Texture identity is stable across frames; a fresh view ID is not.
         let mut mr_bg = self.motion_resolve_bind_group.lock().unwrap();
-        let need_new = !matches!(&*mr_bg, Some((src_id, _)) if *src_id == src_motion_view.id());
+        let need_new =
+            !matches!(&*mr_bg, Some((src_id, _)) if *src_id == motion_attachment_texture.id());
         if need_new {
+            let src_motion_view = motion_attachment_texture
+                .create_view(&bevy::render::render_resource::TextureViewDescriptor::default());
             let wgpu_dev = device.wgpu_device();
             let src_view_wgpu: &wgpu::TextureView = &src_motion_view;
             let bg = wgpu_dev.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -108,7 +205,7 @@ impl MetalFxUpscaleNode {
                     resource: wgpu::BindingResource::TextureView(src_view_wgpu),
                 }],
             });
-            *mr_bg = Some((src_motion_view.id(), bg));
+            *mr_bg = Some((motion_attachment_texture.id(), bg));
         }
         let bind_group = &mr_bg.as_ref().unwrap().1;
 
@@ -218,17 +315,14 @@ impl MetalFxUpscaleNode {
         }
         let dr_ref = dr.as_ref().unwrap();
 
-        // Create source depth view (prepass texture — changes if prepass is recreated).
-        // Destination view is stored in CachedState (stable across frames).
-        let src_depth_view = depth_attachment_texture
-            .create_view(&bevy::render::render_resource::TextureViewDescriptor::default());
-
-        // Get or create cached bind group (keyed on src + dst TextureViewId).
-        // dst_id is stable (stored in CachedState), src_id changes on prepass recreation.
+        // The destination is a render attachment, not part of this binding.
+        // Reuse the source view and binding until the prepass texture changes.
         let mut dr_bg = self.depth_resolve_bind_group.lock().unwrap();
-        let need_new_bg = !matches!(&*dr_bg, Some((src_id, dst_id, _))
-            if *src_id == src_depth_view.id() && *dst_id == content_depth_view.id());
+        let need_new_bg = !matches!(&*dr_bg, Some((src_id, _))
+            if *src_id == depth_attachment_texture.id());
         if need_new_bg {
+            let src_depth_view = depth_attachment_texture
+                .create_view(&bevy::render::render_resource::TextureViewDescriptor::default());
             let wgpu_dev = device.wgpu_device();
             // Extract the raw wgpu TextureView from Bevy's wrapped type.
             let src_view_wgpu: &wgpu::TextureView = &src_depth_view;
@@ -240,9 +334,9 @@ impl MetalFxUpscaleNode {
                     resource: wgpu::BindingResource::TextureView(src_view_wgpu),
                 }],
             });
-            *dr_bg = Some((src_depth_view.id(), content_depth_view.id(), bg));
+            *dr_bg = Some((depth_attachment_texture.id(), bg));
         }
-        let bind_group = &dr_bg.as_ref().unwrap().2;
+        let bind_group = &dr_bg.as_ref().unwrap().1;
 
         // Dispatch depth resolve render pass.
         let mut pass = render_context

@@ -602,6 +602,12 @@ impl bevy::app::Plugin for MetalFxPlugin {
             >::default());
         }
 
+        // Camera-cut handlers are valid even when scaling is disabled or the
+        // platform is unsupported. Install before either early return.
+        app.init_resource::<MetalFxHistoryReset>();
+        app.add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
+            MetalFxHistoryReset,
+        >::default());
         effect_runtime::install(app, self.mode, self.render_scale);
         adaptive_runtime::install(
             app,
@@ -728,13 +734,6 @@ impl bevy::app::Plugin for MetalFxPlugin {
             mode: effective_mode,
             dynamic_res_range,
         });
-        // Registered unconditionally, including off macOS: the crate promises a
-        // consumer needs no `#[cfg]` guards of its own, and that only holds if
-        // the resource it writes to exists everywhere.
-        app.init_resource::<MetalFxHistoryReset>();
-        app.add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
-            MetalFxHistoryReset,
-        >::default());
         register_resolution_override(app);
 
         // Adaptive render scale (opt-in).
@@ -767,6 +766,9 @@ impl bevy::app::Plugin for MetalFxPlugin {
                 bevy::app::Update,
                 (setup_temporal_camera, jitter::update_jitter).chain(),
             );
+            // Run after application settings in Update, independently of
+            // whether prepass components already exist, before extraction.
+            app.add_systems(bevy::app::PostUpdate, enforce_temporal_msaa);
         }
         // Extract MetalFxConfig from main world to render world each frame.
         // Must be added to main app — the plugin internally finds the RenderApp sub-app.
@@ -1098,6 +1100,17 @@ fn setup_temporal_camera(
             // copied to content-sized input buffers for MetalFX.
             bevy::render::view::Msaa::Off,
         ));
+    }
+}
+
+/// Temporal accumulation requires single-sampled prepass inputs, including
+/// cameras configured by a consumer and later changes from a settings menu.
+#[cfg(feature = "temporal")]
+fn enforce_temporal_msaa(mut cameras: Query<&mut bevy::render::view::Msaa, With<Camera3d>>) {
+    for mut msaa in &mut cameras {
+        if *msaa != bevy::render::view::Msaa::Off {
+            *msaa = bevy::render::view::Msaa::Off;
+        }
     }
 }
 
@@ -1446,6 +1459,33 @@ mod tests {
             !reset.is_requested(),
             "a default reset would throw away history on every startup frame"
         );
+    }
+
+    #[test]
+    fn disabled_plugin_supports_camera_cut_handlers() {
+        fn camera_cut(mut reset: ResMut<MetalFxHistoryReset>) {
+            reset.request();
+        }
+        let mut app = App::new();
+        app.add_plugins(MetalFxPlugin {
+            mode: MetalFxMode::Disabled,
+            ..default()
+        });
+        app.add_systems(Update, camera_cut);
+        app.update();
+        assert!(app.world().resource::<MetalFxHistoryReset>().is_requested());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn unsupported_platform_supports_camera_cut_handlers() {
+        let mut app = App::new();
+        app.add_plugins(MetalFxPlugin::default());
+        app.world_mut()
+            .resource_mut::<MetalFxHistoryReset>()
+            .request();
+        app.update();
+        assert!(app.world().resource::<MetalFxHistoryReset>().is_requested());
     }
 
     #[test]

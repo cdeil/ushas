@@ -129,6 +129,28 @@ fn preexisting_motion_prepass_does_not_hide_missing_temporal_inputs() {
     );
 }
 
+#[cfg(feature = "temporal")]
+#[test]
+fn temporal_camera_enforces_msaa_even_with_all_inputs_and_after_settings_change() {
+    use bevy::render::view::Msaa;
+    let (mut app, _) = app(MetalFxMode::Temporal, 0.5, false, 0.5);
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera3d::default(),
+            MotionVectorPrepass,
+            DepthPrepass,
+            TemporalJitter::default(),
+            Msaa::Sample4,
+        ))
+        .id();
+    app.update();
+    assert_eq!(app.world().get::<Msaa>(camera), Some(&Msaa::Off));
+    app.world_mut().entity_mut(camera).insert(Msaa::Sample8);
+    app.update();
+    assert_eq!(app.world().get::<Msaa>(camera), Some(&Msaa::Off));
+}
+
 #[test]
 fn resize_updates_existing_render_inputs() {
     let (mut app, window) = app(MetalFxMode::Spatial, 0.5, false, 0.5);
