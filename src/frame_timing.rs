@@ -743,15 +743,21 @@ pub fn harvest(
                 slot.phase = Phase::Mapping(mapped);
             }
             Phase::Mapping(mapped) if mapped.status.load(Ordering::Acquire) != 0 => {
-                let success = mapped.status.load(Ordering::Acquire) == 1;
+                let mut success = mapped.status.load(Ordering::Acquire) == 1;
                 slot.stages.mapping_callback_after = mapped.observed_after();
                 let mut ticks = [0u64; 4];
                 if success {
-                    let bytes = slot.readback.get_mapped_range(..);
-                    for (output, bytes) in ticks.iter_mut().zip(bytes.chunks_exact(8)) {
-                        *output = u64::from_le_bytes(bytes.try_into().unwrap());
+                    match slot.readback.get_mapped_range(..) {
+                        Ok(bytes) => {
+                            for (output, bytes) in ticks.iter_mut().zip(bytes.as_chunks::<8>().0) {
+                                *output = u64::from_le_bytes(*bytes);
+                            }
+                        }
+                        Err(_) => success = false,
                     }
-                    drop(bytes);
+                    // The callback reported a mapping, so release it even when no
+                    // view could be taken; a still-mapped readback would make this
+                    // slot's next `map_async` fail.
                     slot.readback.unmap();
                 }
                 if let Some(identity) = slot.identity.take() {

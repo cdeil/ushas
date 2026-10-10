@@ -27,7 +27,17 @@ pub enum EventKind {
         window: u64,
         minimized: Option<bool>,
     },
+    // Only the macOS NSWorkspace observer produces these; the ledger contract
+    // that consumes them stays portable and tested on every target.
+    #[cfg_attr(
+        not(any(target_os = "macos", test)),
+        expect(dead_code, reason = "only the macOS observer constructs it")
+    )]
     WillSleep,
+    #[cfg_attr(
+        not(any(target_os = "macos", test)),
+        expect(dead_code, reason = "only the macOS observer constructs it")
+    )]
     DidWake,
 }
 
@@ -486,7 +496,7 @@ impl Plugin for WindowLifecyclePlugin {
     }
 }
 
-// Bevy 0.19 stores WinitWindows in thread-local storage. NonSendMarker forces
+// Bevy 0.20 stores WinitWindows in thread-local storage. NonSendMarker forces
 // this collector onto the main thread, where querying the native window is valid.
 fn collect_window_events(
     _main_thread: NonSendMarker,

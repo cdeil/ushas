@@ -130,6 +130,7 @@ use crate::{
 /// control surface. Drive the render scale through [`crate::MetalFxRenderScale`]
 /// and the mode through [`crate::MetalFxPlugin::mode`].
 #[derive(Resource, Clone, Copy, bevy::render::extract_resource::ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MetalFxConfig {
     pub(crate) render_scale: f32,
     pub(crate) mode: MetalFxMode,
@@ -150,6 +151,7 @@ pub struct MetalFxConfig {
 ///
 /// Only the frame-interpolation path reads it; other modes ignore it.
 #[derive(Resource, Clone, Copy, bevy::render::extract_resource::ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MetalFxFrameTiming {
     /// Seconds elapsed since the previous frame.
     pub(crate) delta_seconds: f32,
@@ -372,6 +374,7 @@ pub fn metalfx_upscale(
         &'static MainEntity,
         &'static ExtractedCamera,
         &'static ViewTarget,
+        Option<&'static bevy::render::view::ResolvedCompositingSpace>,
         Option<&'static MainPassResolutionOverride>,
         Option<&'static ViewPrepassTextures>,
         Option<&'static TemporalJitter>,
@@ -453,6 +456,7 @@ impl MetalFxUpscaleNode {
             main_entity,
             camera,
             target,
+            compositing_space,
             resolution_override,
             prepass_textures,
             temporal_jitter,
@@ -461,6 +465,7 @@ impl MetalFxUpscaleNode {
             &MainEntity,
             &ExtractedCamera,
             &ViewTarget,
+            Option<&bevy::render::view::ResolvedCompositingSpace>,
             Option<&MainPassResolutionOverride>,
             Option<&ViewPrepassTextures>,
             Option<&TemporalJitter>,
@@ -562,7 +567,10 @@ impl MetalFxUpscaleNode {
         let color_processing = if mode == MetalFxMode::FrameInterpolation {
             objc2_metal_fx::MTLFXSpatialScalerColorProcessingMode::Perceptual
         } else {
-            match crate::platform::scaler_color_processing(main_format, target.compositing_space) {
+            match crate::platform::scaler_color_processing(
+                main_format,
+                bevy::render::view::ResolvedCompositingSpace::space(compositing_space),
+            ) {
                 Ok(processing) => processing,
                 Err(reason) => {
                     publish(

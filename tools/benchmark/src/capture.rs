@@ -88,9 +88,16 @@ fn receive(
             return Err("capture dimensions changed".into());
         }
         let bytes = rgba.as_raw();
-        let opaque = bytes.chunks_exact(4).filter(|p| p[3] == 255).count();
+        let opaque = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| p[3] == 255)
+            .count();
         let colors: std::collections::HashSet<_> = bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .step_by(16)
             .map(|p| [p[0], p[1], p[2]])
             .collect();

@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-wgpu = { version = "=29.0.4", default-features = false, features = ["std", "metal", "wgsl"] }
+wgpu = { version = "=30.0.1", default-features = false, features = ["std", "metal", "wgsl"] }
 pollster = "=0.3.0"
 serde_json = "1"
 

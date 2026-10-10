@@ -220,7 +220,9 @@ impl MetalFxAdaptiveContext {
     }
 }
 
-impl bevy::render::extract_resource::ExtractResource for MetalFxAdaptiveContext {
+impl bevy::render::extract_resource::ExtractResource<bevy::render::RenderApp>
+    for MetalFxAdaptiveContext
+{
     type Source = Self;
 
     fn extract_resource(source: &Self) -> Self {
@@ -402,7 +404,7 @@ pub(crate) fn install(app: &mut App, enabled: bool) {
             .insert_resource(input)
             .add_systems(
                 bevy::render::ExtractSchedule,
-                extract_resource::<MetalFxAdaptiveContext, ()>,
+                extract_resource::<MetalFxAdaptiveContext, bevy::render::RenderApp, ()>,
             );
     }
     if enabled {

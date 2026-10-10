@@ -10,6 +10,10 @@
 #
 #   ./verify-published.sh            # against the published 0.4 on crates.io
 #   ./verify-published.sh --packaged # against the .crate tarball (pre-publish)
+#   BEVY_METALFX_VERSION=0.5 BEVY_VERSION=0.20 ./verify-published.sh
+#                                   # after the Bevy 0.20 release is published
+# Registry mode defaults to Bevy 0.19; BEVY_VERSION must match the chosen crate.
+# --packaged derives the Bevy version from the local manifest.
 #
 # --packaged repackages and extracts the tarball itself rather than reusing
 # target/package/<name>-<ver>/. That directory and the .crate beside it can fall
@@ -117,11 +121,15 @@ if [[ "${1:-}" == "--packaged" ]]; then
         echo "    ok: ${desc#!}"
     done
     DEP="bevy_metalfx = { path = \"$PKG\" }"
+    # The 0.5 candidate builds on Bevy 0.20; the published 0.4 series on 0.19.
+    # A consumer on the other Bevy would fail on duplicate types, not on us.
+    BEVY_VERSION="0.20"
     SOURCE="tarball $TARBALL"
     CANDIDATE_FEATURES="candidate"
     DIAGNOSTIC_DEPENDENCY='"bevy_metalfx/diagnostic-fault-injection"'
 else
     DEP="bevy_metalfx = \"$VERSION\""
+    BEVY_VERSION="${BEVY_VERSION:-0.19}"
     SOURCE="crates.io $VERSION"
     CANDIDATE_FEATURES=""
     DIAGNOSTIC_DEPENDENCY=''
@@ -139,7 +147,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-bevy = { version = "0.19", default-features = false, features = [
+bevy = { version = "$BEVY_VERSION", default-features = false, features = [
   "bevy_camera", "bevy_render", "bevy_core_pipeline", "bevy_window",
 ] }
 $DEP

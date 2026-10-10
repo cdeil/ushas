@@ -9,8 +9,18 @@ pub fn image_proof(rgba: &[u8], width: u32, height: u32) -> Value {
         return json!({"nonuniform":false,"error":"invalid dimensions or RGBA length"});
     }
     let pixel_count = pixel_count.unwrap();
-    let alpha_zero_pixels = rgba.chunks_exact(4).filter(|pixel| pixel[3] == 0).count();
-    let opaque_pixels = rgba.chunks_exact(4).filter(|pixel| pixel[3] == 255).count();
+    let alpha_zero_pixels = rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|pixel| pixel[3] == 0)
+        .count();
+    let opaque_pixels = rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|pixel| pixel[3] == 255)
+        .count();
     let all_zero_rgba = rgba.iter().all(|byte| *byte == 0);
     let capture_error = if all_zero_rgba {
         Some("all_zero_rgba_readback")

@@ -1,6 +1,6 @@
 # Ushas render smoke
 
-A standalone Bevy 0.19 scene with a locked dependency graph, visible geometry,
+A standalone Bevy 0.20 scene with a locked dependency graph, visible geometry,
 a controllable fragment workload, moving edges, and an output-resolution UI.
 The default subject is a procedural 3D version of vgel/thebes' Claude character,
 with an articulated head, limbs, and tail. See [CHARACTER.md](CHARACTER.md) for

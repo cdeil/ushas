@@ -622,8 +622,7 @@ mod tests {
             .all(|v| (Vec3::from_array(*v).length() - 1.0).abs() < 1e-5));
         let indices: Vec<_> = mesh.indices().unwrap().iter().collect();
         let mut edges = BTreeMap::<(usize, usize), usize>::new();
-        for triangle in indices.chunks_exact(3) {
-            let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
+        for &[a, b, c] in indices.as_chunks::<3>().0 {
             let [pa, pb, pc] = [positions[a], positions[b], positions[c]].map(Vec3::from_array);
             let area = (pb - pa).cross(pc - pa);
             assert!(

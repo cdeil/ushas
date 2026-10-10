@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         json!({
             "kind": "capabilities", "adapter": info.name, "backend": format!("{:?}", info.backend),
-            "wgpu": "29.0.4", "supported_timestamp_features": format!("{supported:?}"),
+            "wgpu": "30.0.1", "supported_timestamp_features": format!("{supported:?}"),
             "enabled_timestamp_features": format!("{:?}", device.features()),
             "timestamp_period_ns": queue.get_timestamp_period(),
             "scope": "headless synthetic dependent compute chain; not a rendered frame",
@@ -223,10 +223,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .iter()
                         .find(|p| p.0 == frame_id)
                         .ok_or("unknown completed frame")?;
-                    let bytes = buffer.get_mapped_range(..);
+                    let bytes = buffer.get_mapped_range(..)?;
                     let ticks: Vec<u64> = bytes[..(PASSES * 16) as usize]
-                        .chunks_exact(8)
-                        .map(|v| u64::from_le_bytes(v.try_into().unwrap()))
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
+                        .map(|v| u64::from_le_bytes(*v))
                         .collect();
                     let output = u32::from_le_bytes(bytes[64..68].try_into().unwrap());
                     let expected_output = expected(0, *iterations);
@@ -238,7 +240,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         queue.get_timestamp_period(),
                     );
                     let pass_ms: Vec<Option<f64>> = ticks
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|t| {
                             interval(frame_id, t[0], t[1], queue.get_timestamp_period())
                                 .map(|s| s.elapsed_ms)

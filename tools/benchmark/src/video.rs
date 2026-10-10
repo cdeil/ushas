@@ -31,7 +31,9 @@ impl FramePlan {
         let mut header = [0; 24];
         header[..8].copy_from_slice(b"USHASV01");
         for (chunk, value) in header[8..]
-            .chunks_exact_mut(4)
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
             .zip([WIDTH, HEIGHT, FPS, self.total])
         {
             chunk.copy_from_slice(&value.to_le_bytes());
@@ -56,7 +58,9 @@ impl FramePlan {
         let mut header = [0; 16];
         for (chunk, value) in
             header
-                .chunks_exact_mut(4)
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
                 .zip([self.next, ordinal, tick, FRAME_BYTES])
         {
             chunk.copy_from_slice(&value.to_le_bytes());
@@ -148,7 +152,9 @@ impl Encoder {
     ) -> Result<(), String> {
         let result = (|| {
             let header = self.plan.frame_header(scene, tick)?;
-            if rgba.len() != FRAME_BYTES as usize || rgba.chunks_exact(4).any(|p| p[3] != 255) {
+            if rgba.len() != FRAME_BYTES as usize
+                || rgba.as_chunks::<4>().0.iter().any(|p| p[3] != 255)
+            {
                 return Err("video readback is not tightly packed opaque RGBA8".into());
             }
             let input = self.input.as_mut().ok_or("encoder stream already closed")?;
@@ -313,8 +319,10 @@ mod tests {
             for tick in (0..1200).step_by(2) {
                 let header = plan.frame_header(scene, tick).unwrap();
                 let values: Vec<_> = header
-                    .chunks_exact(4)
-                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| u32::from_le_bytes(*b))
                     .collect();
                 assert_eq!(
                     values,

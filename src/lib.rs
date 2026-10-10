@@ -1,7 +1,7 @@
 //! Bevy plugin for Apple MetalFX upscaling and frame interpolation.
 //!
 //! Uses `objc2-metal-fx` for MetalFX framework bindings and integrates
-//! through Bevy 0.19's per-view render schedules. Spatial and Temporal reconstruct
+//! through Bevy 0.20's per-view render schedules. Spatial and Temporal reconstruct
 //! scene color before postprocessing and native-resolution UI.
 //!
 //! <div class="warning">
@@ -76,6 +76,7 @@ mod stub {
     /// a Linux build of the default features.
     #[allow(dead_code)]
     #[derive(Resource, Clone, Copy, bevy::render::extract_resource::ExtractResource)]
+    #[extract_app(bevy::render::RenderApp)]
     pub struct MetalFxConfig {
         pub(crate) render_scale: f32,
         pub(crate) mode: MetalFxMode,

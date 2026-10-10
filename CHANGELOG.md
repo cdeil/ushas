@@ -46,6 +46,9 @@ Hardware and release acceptance gates are still in progress.
 
 ### Changed (breaking)
 
+- **Requires Bevy 0.20 / wgpu 30.** MSRV moves 1.95 → 1.97.1, set by `bevy`
+  0.20; nothing in this crate's own code needs it. The diagnostic tools under
+  `tools/` move with it.
 - Replaced app-time P99 adaptation with validated GPU frame-cost input. CPU-only
   slow frames, stale samples, pending scalers, and missing timing do not lower
   quality. Evidence resets on configuration/view changes and explicit workload

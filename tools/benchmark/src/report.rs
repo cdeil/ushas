@@ -123,7 +123,9 @@ fn validate_capture(config: &RunConfig, capture: &mut Value) -> Result<(), Strin
         return Err("capture dimensions or format incompatible".into());
     }
     if bytes[..info.buffer_size()]
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .any(|p| p[3] != 255)
     {
         return Err("capture is not opaque".into());

@@ -34,7 +34,7 @@ impl MetalFxHistoryReset {
     pub fn request(&mut self) {
         self.state
             .requested
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
                 generation.checked_add(1)
             })
             .expect("MetalFX history reset generation exhausted");
@@ -62,7 +62,7 @@ impl MetalFxHistoryReset {
     }
 }
 
-impl ExtractResource for MetalFxHistoryReset {
+impl ExtractResource<bevy::render::RenderApp> for MetalFxHistoryReset {
     type Source = Self;
 
     fn extract_resource(source: &Self) -> Self {
