@@ -5,7 +5,7 @@
 //! The fence below follows both that submitted dependency chain and Bevy's final
 //! screenshot/readback submission. It does not measure an unrelated Metal queue
 //! or the experimental frame-generation presentation path (which is rejected).
-//! See wgpu 29.0.4 Queue::on_submitted_work_done and Bevy 0.19 render_system.
+//! See wgpu 30.0.1 Queue::on_submitted_work_done and Bevy 0.20 render_system.
 
 // BEGIN PURE CONTRACT
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -460,6 +460,7 @@ use std::time::{Duration, Instant};
 /// Extracted with the frame. Advance the epoch when entering measurement and
 /// again before requesting a final screenshot; never mutate an existing epoch.
 #[derive(Resource, Clone, Copy, ExtractResource)]
+#[extract_app(RenderApp)]
 pub struct CompletionRequest(pub Epoch);
 
 impl Default for CompletionRequest {

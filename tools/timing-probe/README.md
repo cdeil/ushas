@@ -14,9 +14,10 @@ macOS GPU access may require execution outside a restricted sandbox. A failure
 to discover any Metal adapter inside a sandbox does not establish lack of
 hardware support.
 
-The default run executes 16 synthetic samples: pass-descriptor and encoder
-timestamp modes, light/heavy dependent compute chains, and zero/20 ms
-pre-submit CPU-delay controls. Each sample contains three command buffers that
+The default run executes eight pass-descriptor synthetic samples: light/heavy
+dependent compute chains and zero/20 ms pre-submit CPU-delay controls. Where
+`TIMESTAMP_QUERY_INSIDE_ENCODERS` is supported, it also executes eight encoder
+timestamp samples (16 total); unsupported encoder cases are skipped. Each sample contains three command buffers that
 read/write the same storage buffer, followed by query resolution and readback.
 The final storage value is checked against an integer CPU reference to reject
 an empty or incorrect workload. Each readback has a unique encoded sequence ID.
@@ -34,4 +35,8 @@ invalid. Exit zero establishes only that this synthetic probe passed.
 The committed evidence files retain the initial failures and the successful
 deferred pass-descriptor control. [evidence.json](evidence.json) records exact
 commands, exit outcomes, and the earlier mixed run's incomplete output.
+Those files were recorded with wgpu 29.0.4. wgpu-hal 30 advertises
+`TIMESTAMP_QUERY_INSIDE_ENCODERS` on Metal only with blit-boundary counter
+sampling; where it is absent, the probe skips the encoder case, so a default run
+emits only the eight pass-descriptor samples.
 

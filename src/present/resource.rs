@@ -19,6 +19,7 @@ use super::PresentSink;
 /// that finds the layer once and an `ExtractResource` that carries the pointer
 /// across.
 #[derive(bevy::prelude::Resource, Clone, bevy::render::extract_resource::ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MetalFxDualPresent {
     /// `CAMetalLayer` pointer as a `usize` so the resource stays `Send`. Zero
     /// until the surface exists — the window is created after the plugin.

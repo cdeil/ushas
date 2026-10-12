@@ -83,8 +83,11 @@ mod tests {
         // Bevy's actual projection mutation, perspective divide and viewport
         // conversion instead of asserting another copy of the sign formula.
         for size in [Vec2::new(640.0, 360.0), Vec2::new(960.0, 540.0)] {
-            let projection =
-                Mat4::perspective_infinite_reverse_rh(60.0_f32.to_radians(), size.x / size.y, 0.1);
+            let projection = bevy::math::proj::perspective_infinite_reverse(
+                60.0_f32.to_radians(),
+                size.x / size.y,
+                0.1,
+            );
             for offset in HALTON_SEQUENCE {
                 let jitter = TemporalJitter { offset };
                 let mut jittered = projection;

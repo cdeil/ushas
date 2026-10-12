@@ -16,17 +16,19 @@ use crate::{MetalFxEffectStatus, MetalFxMode};
 
 /// Monotonic application frame identity carried into the render world.
 #[derive(Resource, Clone, Copy, Default, ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MetalFxObservationFrame(pub u64);
 
 /// Original application request, retained when build-time fallback changes config.
 #[derive(Resource, Clone, Copy, ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub(crate) struct MetalFxRequestedEffect {
     pub mode: MetalFxMode,
     pub scale: f32,
     pub available: bool,
 }
 
-impl ExtractResource for MetalFxEffectStatus {
+impl ExtractResource<bevy::render::RenderApp> for MetalFxEffectStatus {
     type Source = Self;
 
     fn extract_resource(source: &Self) -> Self {

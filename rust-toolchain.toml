@@ -1,4 +1,4 @@
-# Reproducible repository development; the library MSRV remains Cargo.toml's 1.95.
+# Reproducible repository development; matches the library MSRV in Cargo.toml.
 [toolchain]
 channel = "1.97.1"
 profile = "minimal"

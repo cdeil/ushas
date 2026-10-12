@@ -36,6 +36,7 @@ pub struct ScalerFaultSnapshot {
 /// Extraction copies the generation and fault. Updating the main resource
 /// cannot mutate an already-extracted frame's decision.
 #[derive(Resource, ExtractResource, Debug, Clone, Default)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct MetalFxDiagnosticFault {
     current: ScalerFaultSnapshot,
 }

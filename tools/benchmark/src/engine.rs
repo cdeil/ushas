@@ -46,6 +46,7 @@ enum Phase {
 }
 
 #[derive(Resource, Clone, ExtractResource)]
+#[extract_app(RenderApp)]
 struct Request {
     epoch: u64,
     phase: Phase,
@@ -408,7 +409,8 @@ pub fn run(config: RunConfig) -> EngineResult {
             mode: config.mode.metalfx(),
             render_scale: config.scale,
             adaptive: false,
-            ..default()
+            #[cfg(target_os = "macos")]
+            gpu_timing_sink: None,
         },
         LabScenePlugin,
     ));
@@ -495,7 +497,7 @@ pub fn run(config: RunConfig) -> EngineResult {
         "pipelined_rendering":true,"measurement_per_frame_gpu_callbacks":false,"per_frame_gpu_waits":config.action==Action::Video,"legacy_metalfx_gpu_timing_disabled":true,
         "completion_boundary":if offscreen {"after RenderSystems::PostCleanup; prior wgpu submissions to the owned image target"} else {"after RenderSystems::PostCleanup; prior wgpu submissions, not final native Present buffer"},
         "present_mode_requested":if offscreen {None}else{Some("Immediate")},"present_mode_resolved":null,
-        "present_mode_resolved_unavailable_reason":if offscreen {"not applicable: no native surface"} else {"Bevy 0.19 surface configuration is private; the window field retains the request rather than a resolved runtime policy."},
+        "present_mode_resolved_unavailable_reason":if offscreen {"not applicable: no native surface"} else {"Bevy 0.20 surface configuration is private; the window field retains the request rather than a resolved runtime policy."},
         "presentation_note":if offscreen {"No native presentation or live preview; the image target is independent of other window visibility."} else {"Completed-render throughput of this native window path may include drawable acquisition and presentation backpressure; it is not uncapped hardware capacity."},
         "output_physical_pixels":[config.width,config.height],
         "stress_retention":{"maximum_samples":8192,"evicted_completed_samples":evicted_stress_samples,"retained_completed_cohort_details":8},
@@ -1584,20 +1586,24 @@ fn stream_video_frame(
             }
             std::thread::sleep(Duration::from_millis(1));
         }
-        let pixels = buffer.slice(..).get_mapped_range();
-        let scene = settings
-            .config
-            .scenes()
-            .into_iter()
-            .find(|scene| scene.as_str() == request.scene)
-            .ok_or("video readback chapter absent")?;
-        let result =
-            video
-                .0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .submit(scene, request.tick, &pixels);
-        drop(pixels);
+        let result = buffer
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|e| format!("video frame view failed: {e}"))
+            .and_then(|pixels| {
+                let scene = settings
+                    .config
+                    .scenes()
+                    .into_iter()
+                    .find(|scene| scene.as_str() == request.scene)
+                    .ok_or("video readback chapter absent")?;
+                video.0.lock().unwrap_or_else(|e| e.into_inner()).submit(
+                    scene,
+                    request.tick,
+                    &pixels,
+                )
+            });
+        // The readback is reused, so release the mapping on every path.
         buffer.unmap();
         result
     })();

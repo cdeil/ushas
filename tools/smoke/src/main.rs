@@ -147,18 +147,24 @@ fn main() -> AppExit {
         visible: !config.offscreen,
         ..default()
     };
+    #[cfg(target_os = "macos")]
     let experimental_timing = config.experimental_timing;
     let offscreen = config.offscreen;
     let completion_enabled = config.completion || config.quality_sequence;
     let completion_scale = config.scale;
     let size = (config.width, config.height);
-    let mut renderer = bevy::render::RenderPlugin::default();
     #[cfg(target_os = "macos")]
-    if experimental_timing {
-        let mut settings = bevy::render::settings::WgpuSettings::default();
-        settings.features |= bevy_metalfx::frame_timing::requested_features();
-        renderer.render_creation = settings.into();
-    }
+    let renderer = {
+        let mut renderer = bevy::render::RenderPlugin::default();
+        if experimental_timing {
+            let mut settings = bevy::render::settings::WgpuSettings::default();
+            settings.features |= bevy_metalfx::frame_timing::requested_features();
+            renderer.render_creation = settings.into();
+        }
+        renderer
+    };
+    #[cfg(not(target_os = "macos"))]
+    let renderer = bevy::render::RenderPlugin::default();
     let mut app = App::new();
     let policy = bevy_metalfx::MetalFxAdaptiveConfig {
         target: config.target_fps.map_or(
@@ -597,6 +603,50 @@ fn analysis_budget(
     )
 }
 
+fn runtime_environment(offscreen: bool) -> Value {
+    let command = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+    };
+    let executable = std::env::current_exe().ok();
+    let binary_hash = executable
+        .as_ref()
+        .and_then(|p| p.to_str())
+        .and_then(|p| command("/usr/bin/shasum", &["-a", "256", p]));
+    json!({"executable":executable,"binary_sha256":binary_hash,
+        "rustc":env!("USHAS_RUSTC"),"os":command("/usr/bin/sw_vers", &[]),
+        "metal_debug_layer":std::env::var("MTL_DEBUG_LAYER").ok(),
+        "features":"frame-interpolation (includes temporal)",
+        "surface_mode":if offscreen {"offscreen image / no Winit or swapchain / unpaced ScheduleRunner"} else {"AutoNoVsync / AlwaysOnTop / continuous event loop"},
+        "arguments":std::env::args().skip(1).collect::<Vec<_>>()})
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_timing_stages(
+    stages: bevy_metalfx::frame_timing::ExperimentalTimingStages,
+    harvested_after: Option<Duration>,
+) -> Value {
+    let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
+    let difference = |end: Option<Duration>, start: Option<Duration>| {
+        end.zip(start)
+            .and_then(|(end, start)| end.checked_sub(start))
+            .map(ms)
+    };
+    json!({
+        "workload_callback_after_encode_ms":stages.workload_callback_after.map(ms),
+        "resolve_submit_after_encode_ms":stages.resolve_submitted_after.map(ms),
+        "mapping_callback_after_encode_ms":stages.mapping_callback_after.map(ms),
+        "harvest_after_encode_ms":harvested_after.map(ms),
+        "workload_callback_to_resolve_submit_ms":difference(stages.resolve_submitted_after,stages.workload_callback_after),
+        "resolve_submit_to_mapping_callback_ms":difference(stages.mapping_callback_after,stages.resolve_submitted_after),
+        "mapping_callback_to_harvest_ms":difference(harvested_after,stages.mapping_callback_after),
+    })
+}
+
 #[cfg(test)]
 mod target_budget_tests {
     use super::*;
@@ -637,28 +687,6 @@ mod target_budget_tests {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn cpu_timing_stages(
-    stages: bevy_metalfx::frame_timing::ExperimentalTimingStages,
-    harvested_after: Option<Duration>,
-) -> Value {
-    let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
-    let difference = |end: Option<Duration>, start: Option<Duration>| {
-        end.zip(start)
-            .and_then(|(end, start)| end.checked_sub(start))
-            .map(ms)
-    };
-    json!({
-        "workload_callback_after_encode_ms":stages.workload_callback_after.map(ms),
-        "resolve_submit_after_encode_ms":stages.resolve_submitted_after.map(ms),
-        "mapping_callback_after_encode_ms":stages.mapping_callback_after.map(ms),
-        "harvest_after_encode_ms":harvested_after.map(ms),
-        "workload_callback_to_resolve_submit_ms":difference(stages.resolve_submitted_after,stages.workload_callback_after),
-        "resolve_submit_to_mapping_callback_ms":difference(stages.mapping_callback_after,stages.resolve_submitted_after),
-        "mapping_callback_to_harvest_ms":difference(harvested_after,stages.mapping_callback_after),
-    })
-}
-
 #[cfg(all(test, target_os = "macos"))]
 mod timing_telemetry_tests {
     use super::*;
@@ -683,26 +711,4 @@ mod timing_telemetry_tests {
         assert_eq!(complete["resolve_submit_to_mapping_callback_ms"], 100.0);
         assert_eq!(complete["mapping_callback_to_harvest_ms"], 4.0);
     }
-}
-
-fn runtime_environment(offscreen: bool) -> Value {
-    let command = |program: &str, args: &[&str]| {
-        std::process::Command::new(program)
-            .args(args)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-    };
-    let executable = std::env::current_exe().ok();
-    let binary_hash = executable
-        .as_ref()
-        .and_then(|p| p.to_str())
-        .and_then(|p| command("/usr/bin/shasum", &["-a", "256", p]));
-    json!({"executable":executable,"binary_sha256":binary_hash,
-        "rustc":env!("USHAS_RUSTC"),"os":command("/usr/bin/sw_vers", &[]),
-        "metal_debug_layer":std::env::var("MTL_DEBUG_LAYER").ok(),
-        "features":"frame-interpolation (includes temporal)",
-        "surface_mode":if offscreen {"offscreen image / no Winit or swapchain / unpaced ScheduleRunner"} else {"AutoNoVsync / AlwaysOnTop / continuous event loop"},
-        "arguments":std::env::args().skip(1).collect::<Vec<_>>()})
 }

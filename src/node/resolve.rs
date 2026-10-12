@@ -15,103 +15,6 @@ use bevy::render::renderer::{RenderContext, RenderDevice};
 
 use super::{MetalFxUpscaleNode, ResolvePipeline};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bevy::ecs::system::SystemState;
-    use bevy::prelude::World;
-    use bevy::render::render_resource::{Texture, TextureDescriptor, TextureViewDescriptor};
-    use bevy::render::renderer::{PendingCommandBuffers, WgpuWrapper};
-
-    #[test]
-    #[ignore = "requires a real Metal device; run explicitly on macOS"]
-    fn resolve_bindings_reuse_source_texture_and_invalidate_on_replacement() {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::METAL,
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
-        let adapter = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
-            .expect("Metal adapter required");
-        let (raw, queue) = bevy::tasks::block_on(adapter.request_device(&Default::default()))
-            .expect("Metal device required");
-        let device = RenderDevice::new(WgpuWrapper::new(raw));
-        let texture = |format| -> Texture {
-            device.create_texture(&TextureDescriptor {
-                label: Some("resolve_cache_regression"),
-                size: wgpu::Extent3d {
-                    width: 16,
-                    height: 16,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-        };
-        let mut world = World::new();
-        world.insert_resource(device.clone());
-        world.init_resource::<PendingCommandBuffers>();
-        let mut system = SystemState::<RenderContext>::new(&mut world);
-        let node = MetalFxUpscaleNode::default();
-        for motion in [false, true] {
-            let format = if motion {
-                wgpu::TextureFormat::Rg16Float
-            } else {
-                wgpu::TextureFormat::Depth32Float
-            };
-            let source = texture(format);
-            let destination = texture(format).create_view(&TextureViewDescriptor::default());
-            let resolve =
-                |source: &Texture, world: &mut World, system: &mut SystemState<RenderContext>| {
-                    let mut context = system.get_mut(world).expect("render resources");
-                    if motion {
-                        node.resolve_motion(&device, &mut context, source, &destination, 16, 16);
-                    } else {
-                        node.resolve_depth(&device, &mut context, source, &destination, 16, 16);
-                    }
-                    drop(context);
-                    system.apply(world);
-                    queue.submit(world.resource_mut::<PendingCommandBuffers>().take());
-                    if motion {
-                        node.motion_resolve_bind_group
-                            .lock()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .1
-                            .clone()
-                    } else {
-                        node.depth_resolve_bind_group
-                            .lock()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .1
-                            .clone()
-                    }
-                };
-            let first = resolve(&source, &mut world, &mut system);
-            for _ in 0..8 {
-                assert_eq!(
-                    first,
-                    resolve(&source, &mut world, &mut system),
-                    "stable prepass must reuse its binding"
-                );
-            }
-            let replacement = texture(format);
-            assert_ne!(
-                first,
-                resolve(&replacement, &mut world, &mut system),
-                "same-size recreated texture must invalidate the binding"
-            );
-        }
-    }
-}
-
 impl MetalFxUpscaleNode {
     /// Resolve full-res motion vectors into the content-sized RG16Float texture.
     pub(super) fn resolve_motion(
@@ -366,5 +269,105 @@ impl MetalFxUpscaleNode {
         pass.set_viewport(0.0, 0.0, content_w as f32, content_h as f32, 0.0, 1.0);
         pass.draw(0..3, 0..1);
         // pass drops here → render encoder ends
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::SystemState;
+    use bevy::prelude::World;
+    use bevy::render::render_resource::{Texture, TextureDescriptor, TextureViewDescriptor};
+    use bevy::render::renderer::PendingCommandBuffers;
+
+    #[test]
+    #[ignore = "requires a real Metal device; run explicitly on macOS"]
+    fn resolve_bindings_reuse_source_texture_and_invalidate_on_replacement() {
+        bevy::tasks::ComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::METAL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
+            .expect("Metal adapter required");
+        let (raw, queue) = bevy::tasks::block_on(adapter.request_device(&Default::default()))
+            .expect("Metal device required");
+        let device = RenderDevice::new(raw);
+        let texture = |format| -> Texture {
+            device.create_texture(&TextureDescriptor {
+                label: Some("resolve_cache_regression"),
+                size: wgpu::Extent3d {
+                    width: 16,
+                    height: 16,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+        };
+        let mut world = World::new();
+        world.insert_resource(device.clone());
+        world.init_resource::<PendingCommandBuffers>();
+        let mut system = SystemState::<RenderContext>::new(&mut world);
+        let node = MetalFxUpscaleNode::default();
+        for motion in [false, true] {
+            let format = if motion {
+                wgpu::TextureFormat::Rg16Float
+            } else {
+                wgpu::TextureFormat::Depth32Float
+            };
+            let source = texture(format);
+            let destination = texture(format).create_view(&TextureViewDescriptor::default());
+            let resolve = |source: &Texture,
+                           world: &mut World,
+                           system: &mut SystemState<RenderContext>| {
+                {
+                    let mut context = system.get_mut(world).expect("render resources");
+                    if motion {
+                        node.resolve_motion(&device, &mut context, source, &destination, 16, 16);
+                    } else {
+                        node.resolve_depth(&device, &mut context, source, &destination, 16, 16);
+                    }
+                }
+                system.apply(world);
+                queue.submit(world.resource_mut::<PendingCommandBuffers>().finish());
+                if motion {
+                    node.motion_resolve_bind_group
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .1
+                        .clone()
+                } else {
+                    node.depth_resolve_bind_group
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .1
+                        .clone()
+                }
+            };
+            let first = resolve(&source, &mut world, &mut system);
+            for _ in 0..8 {
+                assert_eq!(
+                    first,
+                    resolve(&source, &mut world, &mut system),
+                    "stable prepass must reuse its binding"
+                );
+            }
+            let replacement = texture(format);
+            assert_ne!(
+                first,
+                resolve(&replacement, &mut world, &mut system),
+                "same-size recreated texture must invalidate the binding"
+            );
+        }
     }
 }

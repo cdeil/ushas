@@ -70,8 +70,9 @@ Spatial and temporal upscaling run after the scene pass, before tonemapping and
 later post-processing. The reconstructed scene then receives output-resolution
 UI and Bevy's final output pass. `Disabled` at a reduced scale uses a bilinear
 copy of the rendered content region as the comparison arm; `Disabled` at 1.0
-is native rendering. Bevy 0.19's built-in final blit alone does not provide that
-reduced-scale control: it samples the full allocated texture with nearest filtering.
+is native rendering. Bevy's built-in final blit (0.19 and 0.20) alone does not
+provide that reduced-scale control: it samples the full allocated texture with
+nearest filtering.
 
 Frame interpolation retains a separate, experimental late output path. Its UI
 and HDR composition have not been established for the new early upscaling path.
@@ -102,12 +103,13 @@ The Development APIs below require the source candidate, rather than the
 published 0.4 quick start:
 
 ```toml
-bevy_metalfx = { git = "https://github.com/mistakeknot/ushas", rev = "f7e27698714ef236b32cfe4cc4a29273e8b3bc5f", features = ["temporal"] }
+bevy_metalfx = { path = "../ushas", features = ["temporal"] }
 ```
 
-This revision is an unpublished candidate; hardware validation and release
-preparation continue separately. A local checkout can use `path = "../ushas"`
-in place of `git` and `rev`.
+This unpublished Bevy 0.20 candidate currently requires a local checkout with
+the port applied. Hardware validation and release preparation continue
+separately. After the port lands, replace `path` with the upstream `git` URL and
+an exact verified port commit; the former `f7e2769` pin uses Bevy 0.19.
 
 | Type | Purpose |
 |------|---------|
@@ -321,7 +323,7 @@ panel-delivery claim.
 
 | bevy_metalfx | Bevy | MSRV |
 |-------------|------|------|
-| Development (unpublished) | 0.19 | 1.95 |
+| Development (unpublished) | 0.20 | 1.97.1 |
 | 0.4.1–0.4.2 | 0.19 | 1.95 |
 | ~~0.4.0~~ (yanked) | 0.19 | 1.95 |
 | 0.1–0.3 | 0.18 | 1.82 |
@@ -332,6 +334,9 @@ hardware checks and their limits are recorded in the [changelog](CHANGELOG.md);
 compilation alone does not establish rendered behavior.
 
 ## Development: Upgrading from 0.4
+
+The 0.5 candidate requires Bevy 0.20 (wgpu 30) and Rust 1.97.1. `bevy` 0.20
+and its WESL shader dependencies set that minimum; nothing in this crate's own code needs it.
 
 The upcoming 0.5 changes replace the app-time P99 governor and remove the public
 `AdaptiveScaleState` type. Read `MetalFxAdaptiveStatus` and configure

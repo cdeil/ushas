@@ -13,6 +13,11 @@ image correctness and CPU effect decisions. It provides no panel-presentation,
 GPU-duration, performance, or frame-generation result. An optional, separate
 completed-render mode adds the bounded throughput comparison described below.
 
+The frozen consumer uses Bevy 0.19 and requires a matching pre-port Ushas
+revision. It must be migrated before a Bevy 0.20 candidate can run this trial,
+including the completed-render instrumentation. Offline fixture tests do not
+establish Bevy 0.20 consumer-trial coverage.
+
 ## Prepare and compile
 
 Run from the Ushas repository with Python 3.12+ and Rust 1.97.1. Supply the exact

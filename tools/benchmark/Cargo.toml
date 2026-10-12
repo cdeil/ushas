@@ -2,7 +2,7 @@
 name = "ushas-bench"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.95"
+rust-version = "1.97.1"
 publish = false
 
 [workspace]
@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 ushas-claude-model = { path = "../claude-model" }
 bevy_metalfx = { path = "../..", default-features = false, features = ["temporal"] }
-bevy = { version = "=0.19.0", default-features = false, features = [
+bevy = { version = "=0.20.0", default-features = false, features = [
     "bevy_asset", "bevy_color", "bevy_core_pipeline", "bevy_log",
     "bevy_pbr", "bevy_render", "bevy_window", "bevy_winit",
     "bevy_ui", "bevy_ui_render", "bevy_text", "default_font",
