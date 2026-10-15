@@ -93,7 +93,8 @@ Hardware and release acceptance gates are still in progress.
 - The smoke fixture's load plane renders again on Bevy 0.20. Its shader used
   naga_oil's `#import`, which Bevy 0.20 no longer preprocesses, so the
   material failed to compile, the plane vanished from every capture and
-  `--pixel-iterations` cost nothing.
+  `--pixel-iterations` cost nothing. The fixture now fails a run on any
+  pipeline-cache error, which is how this escaped.
 
 ### Evidence and Limitations
 

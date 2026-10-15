@@ -33,7 +33,9 @@ The run captures warmup and final PNGs beside its JSON and exits. It waits for
 image before measuring. Active modes require fresh `OutputWritten` observations
 with the requested mode, scale, and physical dimensions throughout measurement.
 Both captures must contain opaque, varied scene pixels beyond the UI header;
-a flat colored or zero-alpha frame fails. Missing
+a flat colored or zero-alpha frame fails, and so does any pipeline-cache error
+Bevy logs, since a material that fails to compile draws nothing while the rest
+of the scene still passes the image checks. Missing
 rendering, timeout, capture failure, or report-write failure returns nonzero.
 A PNG proves captured content, not panel delivery.
 
